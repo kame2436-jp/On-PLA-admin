@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ON PLA! オンラインシステム</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; min-height: 100vh; display: flex; flex-direction: column; }
+        
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .flex-1 { flex: 1; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .space-x-4 > * + * { margin-left: 1rem; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .space-y-6 > * + * { margin-top: 1.5rem; }
+        
+        .container-box { max-width: 420px; width: 100%; background: #ffffff; border-radius: 1rem; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); padding: 2rem; border: 1px solid #f1f5f9; }
+        .btn { width: 100%; padding: 0.75rem 1rem; font-weight: 700; border-radius: 0.75rem; border: none; cursor: pointer; transition: background 0.2s; font-size: 0.95rem; }
+        .btn-primary { background-color: #0284c7; color: white; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.2); }
+        .btn-primary:hover { background-color: #0369a1; }
+        .btn-success { background-color: #059669; color: white; }
+        .btn-success:hover { background-color: #047857; }
+        .btn-danger { background-color: #e11d48; color: white; }
+        .btn-danger:hover { background-color: #be123c; }
+        .input-field { width: 100%; padding: 0.75rem 1rem; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; font-size: 0.95rem; outline: none; transition: all 0.2s; }
+        .input-field:focus { border-color: #0284c7; background-color: #ffffff; box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15); }
+        
+        .card { background: #ffffff; border-radius: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; padding: 1.5rem; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; font-size: 0.75rem; font-weight: 700; border-radius: 9999px; }
+        .badge-sky { background-color: #e0f2fe; color: #0369a1; }
+        .badge-emerald { background-color: #d1fae5; color: #065f46; }
+        .badge-rose { background-color: #ffe4e6; color: #be123c; }
+        .badge-amber { background-color: #fef3c7; color: #92400e; }
+        .badge-purple { background-color: #f3e8ff; color: #6b21a8; }
+        
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; }
+        td { padding: 0.75rem 1rem; font-size: 0.9rem; border-bottom: 1px solid #f1f5f9; }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="flex-1 flex flex-col"></div>
+
+    <script>
+        // --- 状態管理・データベース ---
+        let currentUser = JSON.parse(localStorage.getItem('onpla_current_user')) || null;
+        
+        let users = JSON.parse(localStorage.getItem('onpla_users')) || [
+            { idNo: '00', username: 'admin', role: 'admin' },
+            { idNo: '01', username: 'player1', role: 'player', canAdmin: true },
+            { idNo: '02', username: 'player2', role: 'player', canAdmin: true },
+            { idNo: '03', username: 'player3', role: 'player', canAdmin: true },
+            { idNo: '04', username: 'player4', role: 'player', canAdmin: false }
+        ];
+
+        let viewMode = localStorage.getItem('onpla_view_mode') || 'player';
+
+        let tournaments = JSON.parse(localStorage.getItem('onpla_tournaments')) || [
+            { id: 't1', name: '第1回 プラコロ杯', status: '予定' }
+        ];
+
+        let activeTournamentId = localStorage.getItem('onpla_active_tourney') || tournaments[0].id;
+        let tournamentEntries = JSON.parse(localStorage.getItem('onpla_entries')) || [];
+        let tournamentBrackets = JSON.parse(localStorage.getItem('onpla_brackets')) || [];
+
+        // 自由対戦マッチングシステム
+        // ステータス: '募集中' -> '要望あり' -> '準備中' -> '対戦中' -> '確認中' -> '終了'
+        let customMatches = JSON.parse(localStorage.getItem('onpla_custom_matches')) || [];
+
+        // 戦績データベース
+        let registeredMatches = JSON.parse(localStorage.getItem('onpla_registered_matches')) || [];
+
+        const charaData = {
+            'フシギダネ': { img: '🌱' }, 'ヒトカゲ': { img: '🔥' }, 'ゼニガメ': { img: '💧' },
+            'ピカチュウ': { img: '⚡' }, 'イーブイ': { img: '🤎' }, 'ミュウ': { img: '🔮' },
+            'ゲンガー': { img: '👻' }, 'メタグロス': { img: '🛡️' }, 'ルカリオ': { img: '💙' },
+            'フリーザー': { img: '❄️' }, 'サンダー': { img: '⚡' }, 'ファイヤー': { img: '🔥' },
+            'ベトベター': { img: '🟣' }, 'イワーク': { img: '🪨' }, 'カイロス': { img: '🪲' },
+            'チルタリス': { img: '☁️' }, 'カイリュー': { img: '🐉' }, 'レックウザ': { img: '🟢' },
+            'ゲッコウガ': { img: '🥷' }, 'カヌチャン': { img: '🔨' }, 'ラッキー': { img: '🩷' },
+            'ヤミラミ': { img: '💎' }, 'ボスゴドラ': { img: '⚙️' }
+        };
+
+        const charaGroups = [
+            { groupName: '‐第1弾‐', items: ['フシギダネ', 'ヒトカゲ', 'ゼニガメ', 'ピカチュウ', 'イーブイ', 'ミュウ', 'ゲンガー', 'メタグロス', 'ルカリオ'] },
+            { groupName: '‐たんけんBOX01‐', items: ['フリーザー', 'サンダー', 'ファイヤー', 'ベトベター', 'イワーク', 'カイロス'] },
+            { groupName: '‐第2弾‐', items: ['チルタリス', 'カイリュー'] },
+            { groupName: '‐たんけんBOX02‐', items: ['レックウザ', 'ゲッコウガ', 'カヌチャン', 'ラッキー', 'ヤミラミ', 'ボスゴドラ'] }
+        ];
+
+        let currentPage = localStorage.getItem('onpla_current_page') || 'portal';
+
+        function saveAll() {
+            localStorage.setItem('onpla_current_user', JSON.stringify(currentUser));
+            localStorage.setItem('onpla_users', JSON.stringify(users));
+            localStorage.setItem('onpla_view_mode', viewMode);
+            localStorage.setItem('onpla_tournaments', JSON.stringify(tournaments));
+            localStorage.setItem('onpla_active_tourney', activeTournamentId);
+            localStorage.setItem('onpla_entries', JSON.stringify(tournamentEntries));
+            localStorage.setItem('onpla_brackets', JSON.stringify(tournamentBrackets));
+            localStorage.setItem('onpla_custom_matches', JSON.stringify(customMatches));
+            localStorage.setItem('onpla_registered_matches', JSON.stringify(registeredMatches));
+            localStorage.setItem('onpla_current_page', currentPage);
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+            app.innerHTML = '';
+
+            if (!currentUser) {
+                app.innerHTML = renderLoginScreen();
+                setupLoginEvents();
+            } else {
+                app.innerHTML = renderMainDashboard();
+                setupDashboardEvents();
+            }
+        }
+
+        // --- 1. ログイン・新規登録画面 ---
+        function renderLoginScreen() {
+            return `
+                <div class="flex-1 flex items-center justify-center p-4">
+                    <div class="container-box">
+                        <div style="text-align: center; margin-bottom: 2rem;">
+                            <span class="badge badge-sky" style="text-transform: uppercase; letter-spacing: 0.05em;">Online System</span>
+                            <h1 style="font-size: 1.875rem; font-weight: 800; color: #0f172a; margin-top: 0.5rem;">ON PLA!</h1>
+                            <p style="color: #64748b; font-size: 0.875rem; margin-top: 0.25rem;">オンラインシステム</p>
+                        </div>
+
+                        <div style="display: flex; background: #f1f5f9; padding: 0.25rem; border-radius: 0.75rem; margin-bottom: 1.5rem;">
+                            <button id="tab-login" style="flex: 1; padding: 0.5rem; font-size: 0.875rem; font-weight: 600; border-radius: 0.5rem; background: white; border: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05); cursor: pointer;">ログイン</button>
+                            <button id="tab-register" style="flex: 1; padding: 0.5rem; font-size: 0.875rem; font-weight: 600; background: transparent; color: #64748b; border: none; cursor: pointer;">新規登録</button>
+                        </div>
+
+                        <div id="form-container">
+                            <form id="auth-form" class="space-y-4">
+                                <div>
+                                    <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.35rem;">ID No. (例: 01)</label>
+                                    <input type="text" id="idno-input" placeholder="01" required class="input-field">
+                                </div>
+                                <div>
+                                    <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.35rem;">登録名 (名前)</label>
+                                    <input type="text" id="username-input" placeholder="例: player1" required class="input-field">
+                                </div>
+                                <div id="error-msg" style="color: #e11d48; font-size: 0.75rem; font-weight: 600;" class="hidden"></div>
+                                <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;">ログインする</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        let isRegisterMode = false;
+        function setupLoginEvents() {
+            const tabLogin = document.getElementById('tab-login');
+            const tabRegister = document.getElementById('tab-register');
+            const formContainer = document.getElementById('form-container');
+
+            tabLogin.addEventListener('click', () => {
+                isRegisterMode = false;
+                tabLogin.style.background = 'white';
+                tabLogin.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+                tabLogin.style.color = '#1e293b';
+                tabRegister.style.background = 'transparent';
+                tabRegister.style.boxShadow = 'none';
+                tabRegister.style.color = '#64748b';
+                renderForm();
+            });
+
+            tabRegister.addEventListener('click', () => {
+                isRegisterMode = true;
+                tabRegister.style.background = 'white';
+                tabRegister.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+                tabRegister.style.color = '#1e293b';
+                tabLogin.style.background = 'transparent';
+                tabLogin.style.boxShadow = 'none';
+                tabLogin.style.color = '#64748b';
+                renderForm();
+            });
+
+            function renderForm() {
+                if (isRegisterMode) {
+                    formContainer.innerHTML = `
+                        <form id="auth-form" class="space-y-4">
+                            <div>
+                                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.35rem;">お名前（ニックネーム）</label>
+                                <input type="text" id="username-input" placeholder="例: さくら" required class="input-field">
+                            </div>
+                            <div id="error-msg" style="color: #e11d48; font-size: 0.75rem; font-weight: 600;" class="hidden"></div>
+                            <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;">登録してログイン</button>
+                        </form>
+                    `;
+                } else {
+                    formContainer.innerHTML = `
+                        <form id="auth-form" class="space-y-4">
+                            <div>
+                                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.35rem;">ID No. (例: 01)</label>
+                                <input type="text" id="idno-input" placeholder="01" required class="input-field">
+                            </div>
+                            <div>
+                                <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.35rem;">登録名 (名前)</label>
+                                <input type="text" id="username-input" placeholder="例: player1" required class="input-field">
+                            </div>
+                            <div id="error-msg" style="color: #e11d48; font-size: 0.75rem; font-weight: 600;" class="hidden"></div>
+                            <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem;">ログインする</button>
+                        </form>
+                    `;
+                }
+                setupFormSubmit();
+            }
+            setupFormSubmit();
+        }
+
+        function setupFormSubmit() {
+            const form = document.getElementById('auth-form');
+            const errorMsg = document.getElementById('error-msg');
+
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const uInput = document.getElementById('username-input').value.trim();
+
+                if (isRegisterMode) {
+                    if (users.some(x => x.username === uInput)) {
+                        errorMsg.textContent = 'この名前は既に使われています。';
+                        errorMsg.classList.remove('hidden');
+                        return;
+                    }
+
+                    const nextNum = users.length + 1;
+                    const newIdNo = String(nextNum).padStart(2, '0');
+                    const canAdmin = (nextNum <= 3);
+
+                    const newUser = { idNo: newIdNo, username: uInput, role: 'player', canAdmin: canAdmin };
+                    users.push(newUser);
+                    currentUser = newUser;
+                    viewMode = 'player';
+                    currentPage = 'portal';
+                    saveAll();
+                    alert(`登録完了しました！あなたの 【 ID No. は ${newIdNo} 】 です。`);
+                    render();
+                } else {
+                    const idInput = document.getElementById('idno-input').value.trim();
+                    const found = users.find(x => x.idNo === idInput && x.username === uInput);
+
+                    if (found) {
+                        currentUser = found;
+                        viewMode = 'player';
+                        currentPage = 'portal';
+                        saveAll();
+                        render();
+                    } else {
+                        errorMsg.textContent = 'ID No. または 登録名が一致しません。';
+                        errorMsg.classList.remove('hidden');
+                    }
+                }
+            });
+        }
+
+        // --- 2. メインダッシュボード ---
+        function renderMainDashboard() {
+            const isAdmin = currentUser.role === 'admin';
+            const canSwitch = currentUser.canAdmin || isAdmin;
+            const effectiveAdmin = isAdmin || (canSwitch && viewMode === 'admin');
+            const activeTourney = tournaments.find(t => t.id === activeTournamentId) || tournaments[0];
+
+            return `
+                <header style="background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <div style="background: #0284c7; color: white; font-weight: 900; padding: 0.4rem 0.75rem; border-radius: 0.75rem; font-size: 0.85rem; cursor: pointer;" onclick="goToPortal()">ON PLA!</div>
+                        <span class="badge ${effectiveAdmin ? 'badge-amber' : 'badge-emerald'}">
+                            ${effectiveAdmin ? '👑 管理者モード' : `🎮 プレイヤー (ID: ${currentUser.idNo})`}
+                        </span>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                        ${canSwitch && !isAdmin ? `
+                            <button onclick="toggleViewMode()" style="padding: 0.4rem 0.8rem; background: #7c3aed; color: white; border: none; font-size: 0.75rem; font-weight: bold; border-radius: 0.5rem; cursor: pointer;">
+                                🔄 モード切替: ${viewMode === 'player' ? '管理者モードへ' : 'プレイヤーモードへ'}
+                            </button>
+                        ` : ''}
+                        <span style="font-size: 0.9rem; font-weight: 600; color: #334155;"><span style="color: #0284c7; font-weight: bold;">${currentUser.username}</span>さん</span>
+                        <button id="logout-btn" style="padding: 0.4rem 0.8rem; background: #f1f5f9; border: none; color: #475569; font-size: 0.75rem; font-weight: 700; border-radius: 0.5rem; cursor: pointer;">ログアウト</button>
+                    </div>
+                </header>
+
+                <nav style="background: white; border-bottom: 1px solid #e2e8f0; padding: 0 1.5rem; display: flex; gap: 2rem; flex-wrap: wrap;">
+                    <button data-page="portal" class="nav-page-btn" style="padding: 0.75rem 0; font-size: 0.95rem; font-weight: bold; background: none; border: none; border-bottom: 2px solid ${currentPage === 'portal' ? '#0284c7' : 'transparent'}; color: ${currentPage === 'portal' ? '#0284c7' : '#64748b'}; cursor: pointer;">🏠 メニュー選択</button>
+                    <button data-page="matchmaking" class="nav-page-btn" style="padding: 0.75rem 0; font-size: 0.95rem; font-weight: bold; background: none; border: none; border-bottom: 2px solid ${currentPage === 'matchmaking' ? '#0284c7' : 'transparent'}; color: ${currentPage === 'matchmaking' ? '#0284c7' : '#64748b'}; cursor: pointer;">⚔️ 対戦ロビー</button>
+                    <button data-page="tournaments" class="nav-page-btn" style="padding: 0.75rem 0; font-size: 0.95rem; font-weight: bold; background: none; border: none; border-bottom: 2px solid ${currentPage === 'tournaments' ? '#0284c7' : 'transparent'}; color: ${currentPage === 'tournaments' ? '#0284c7' : '#64748b'}; cursor: pointer;">🏆 大会ページ</button>
+                    <button data-page="records" class="nav-page-btn" style="padding: 0.75rem 0; font-size: 0.95rem; font-weight: bold; background: none; border: none; border-bottom: 2px solid ${currentPage === 'records' ? '#0284c7' : 'transparent'}; color: ${currentPage === 'records' ? '#0284c7' : '#64748b'}; cursor: pointer;">📊 戦績確認</button>
+                    ${effectiveAdmin ? `<button data-page="admin_tourney" class="nav-page-btn" style="padding: 0.75rem 0; font-size: 0.95rem; font-weight: bold; background: none; border: none; border-bottom: 2px solid ${currentPage === 'admin_tourney' ? '#0284c7' : 'transparent'}; color: ${currentPage === 'admin_tourney' ? '#0284c7' : '#64748b'}; cursor: pointer;">👑 大会運営管理</button>` : ''}
+                </nav>
+
+                <main style="flex: 1; padding: 1.5rem; max-width: 1100px; width: 100%; margin: 0 auto;">
+                    ${currentPage === 'portal' ? renderPortalPage() : ''}
+                    ${currentPage === 'matchmaking' ? renderMatchmakingPage() : ''}
+                    ${currentPage === 'tournaments' ? renderTournamentsPage(activeTourney) : ''}
+                    ${currentPage === 'records' ? renderRecordsPage() : ''}
+                    ${currentPage === 'admin_tourney' && effectiveAdmin ? renderAdminTourneyPage(activeTourney) : ''}
+                </main>
+            `;
+        }
+
+        window.goToPortal = function() {
+            currentPage = 'portal';
+            saveAll();
+            render();
+        };
+
+        window.toggleViewMode = function() {
+            viewMode = viewMode === 'player' ? 'admin' : 'player';
+            saveAll();
+            render();
+        };
+
+        function setupDashboardEvents() {
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                currentUser = null;
+                currentPage = 'portal';
+                saveAll();
+                render();
+            });
+
+            document.querySelectorAll('.nav-page-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    currentPage = e.target.getAttribute('data-page');
+                    saveAll();
+                    render();
+                });
+            });
+
+            if (currentPage === 'matchmaking') setupMatchmakingEvents();
+            if (currentPage === 'tournaments') setupTournamentsPageEvents();
+        }
+
+        function renderPortalPage() {
+            return `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem 1rem;">
+                    <div style="text-align: center; margin-bottom: 2.5rem;">
+                        <h2 style="font-size: 1.75rem; font-weight: 800; color: #0f172a; margin-bottom: 0.5rem;">ようこそ、ON PLA! へ！</h2>
+                        <p style="color: #64748b; font-size: 0.95rem;">移動したいメニューを選んでください。</p>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; width: 100%; max-width: 800px;">
+                        <div class="card" style="text-align: center; cursor: pointer;" onclick="navigateAndRender('matchmaking')">
+                            <div style="font-size: 2.2rem; margin-bottom: 0.75rem;">⚔️</div>
+                            <h3 style="font-size: 1.1rem; font-weight: bold; color: #1e293b; margin-bottom: 0.35rem;">対戦ロビー</h3>
+                            <p style="font-size: 0.75rem; color: #64748b; line-height: 1.4;">マッチング申請、準備、対戦開始、結果相互確認まで行えます。</p>
+                        </div>
+
+                        <div class="card" style="text-align: center; cursor: pointer;" onclick="navigateAndRender('tournaments')">
+                            <div style="font-size: 2.2rem; margin-bottom: 0.75rem;">🏆</div>
+                            <h3 style="font-size: 1.1rem; font-weight: bold; color: #1e293b; margin-bottom: 0.35rem;">大会ページ</h3>
+                            <p style="font-size: 0.75rem; color: #64748b; line-height: 1.4;">大会参加登録や対戦表・結果を確認できます。</p>
+                        </div>
+
+                        <div class="card" style="text-align: center; cursor: pointer;" onclick="navigateAndRender('records')">
+                            <div style="font-size: 2.2rem; margin-bottom: 0.75rem;">📊</div>
+                            <h3 style="font-size: 1.1rem; font-weight: bold; color: #1e293b; margin-bottom: 0.35rem;">戦績確認</h3>
+                            <p style="font-size: 0.75rem; color: #64748b; line-height: 1.4;">確定した戦績の履歴を確認します。</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.navigateAndRender = function(page) {
+            currentPage = page;
+            saveAll();
+            render();
+        };
+
+        // --- フル対戦フロー対応のマッチングロビー ---
+        function renderMatchmakingPage() {
+            const playerList = users.filter(u => u.role === 'player' && u.username !== currentUser.username);
+
+            // 自分宛ての対戦要望
+            const incomingRequests = customMatches.filter(m => m.opponent === currentUser.username && m.status === '要望あり');
+            
+            // 自分が関わっている進行中の対戦
+            const activeMatch = customMatches.find(m => (m.creator === currentUser.username || m.opponent === currentUser.username) && m.status !== '終了');
+
+            const optgroupHTML = charaGroups.map(group => `
+                <optgroup label="${group.groupName}">
+                    ${group.items.map(item => `${charaData[item] ? charaData[item].img : ''} <option value="${item}">${item}</option>`).join('')}
+                </optgroup>
+            `).join('');
+
+            return `
+                <div class="space-y-6">
+                    <!-- ① 対戦要望通知 -->
+                    ${incomingRequests.length > 0 ? `
+                        <div style="background: #fef3c7; border: 2px solid #f59e0b; padding: 1.25rem; border-radius: 1rem;" class="space-y-4">
+                            <h3 style="font-size: 1rem; font-weight: bold; color: #92400e;">🔔 対戦要望が届いています！</h3>
+                            ${incomingRequests.map(m => `
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 0.75rem 1rem; border-radius: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                                    <span style="font-weight: bold; color: #1e293b;">👤 <b>${m.creator}</b> さんから対戦申し込み (${m.matchRule})</span>
+                                    <div style="display: flex; gap: 0.5rem;">
+                                        <button onclick="acceptRequest(${m.id})" class="btn btn-success" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.75rem;">受け入れる</button>
+                                        <button onclick="declineRequest(${m.id})" class="btn btn-danger" style="width: auto; padding: 0.4rem 0.8rem; font-size: 0.75rem;">辞退する</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+
+                    <!-- ② 進行中の対戦フロー画面（マッチング成立後） -->
+                    ${activeMatch ? renderActiveMatchFlow(activeMatch, optgroupHTML) : `
+                        <div class="card">
+                            <h2 style="font-size: 1.1rem; font-weight: bold; color: #1e293b; margin-bottom: 0.25rem;">⚔️ 対戦を作成する</h2>
+                            <p style="font-size: 0.75rem; color: #64748b; margin-bottom: 1.5rem;">メンバーを選択して対戦要望を送信できます。</p>
+
+                            <form id="create-match-form" class="space-y-4" style="background: #f8fafc; padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #e2e8f0;">
+                                <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;">
+                                    <div>
+                                        <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.35rem;">対戦相手を選択</label>
+                                        <select id="match-opponent" required class="input-field" style="background: white;">
+                                            <option value="">-- メンバーを選択 --</option>
+                                            ${playerList.map(p => `<option value="${p.username}">${p.username} (ID: ${p.idNo})</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.35rem;">対戦ルール</label>
+                                        <select id="match-rule" class="input-field" style="background: white;">
+                                            <option value="一発勝負">一発勝負</option>
+                                            <option value="BO3">BO3 (3本勝負)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary" style="width: auto; padding: 0.5rem 1rem; font-size: 0.8rem;">対戦要望を送信する</button>
+                            </form>
+                        </div>
+                    `}
+                </div>
+            `;
+        }
+
+        // 対戦進行中の各ステップ画面を描画
+        function renderActiveMatchFlow(m, optgroupHTML) {
+            const isCreator = (m.creator === currentUser.username);
+            const myReady = isCreator ? m.creatorReady : m.opponentReady;
+            const myChara = isCreator ? m.creatorChara : m.opponentChara;
+            const oppName = isCreator ? m.opponent : m.creator;
+            const oppReady = isCreator ? m.opponentReady : m.creatorReady;
+
+            if (m.status === '要望あり') {
+                return `
+                    <div class="card" style="text-align: center; padding: 2.5rem;">
+                        <h3 style="font-size: 1.1rem; font-weight: bold; color: #334155; margin-bottom: 0.5rem;">⏳ 対戦要望送信中...</h3>
+                        <p style="font-size: 0.85rem; color: #64748b;"><b>${m.opponent}</b> さんからの承認を待っています。</p>
+                        <button onclick="cancelMatch(${m.id})" class="btn btn-danger" style="width: auto; margin-top: 1.5rem; padding: 0.4rem 1rem; font-size: 0.8rem;">対戦を取り消す</button>
+                    </div>
+                `;
+            } else if (m.status === '準備中') {
+                return `
+                    <div class="card" style="background: #f0f9ff; border: 1px solid #bae6fd;">
+                        <h3 style="font-size: 1.1rem; font-weight: bold; color: #0369a1; margin-bottom: 0.5rem;">🎮 対戦準備フェーズ (vs ${oppName})</h3>
+                        <p style="font-size: 0.85rem; color: #0284c7; margin-bottom: 1.25rem;">対戦準備を行ってください。使用するキャラコロを選択し、準備ができたら準備完了を押してください。</p>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label style="display: block; font-size: 0.75rem; font-weight: bold; color: #475569; margin-bottom: 0.35rem;">使用するキャラコロ</label>
+                                <select id="my-chara-select" class="input-field" style="background: white;" ${myReady ? 'disabled' : ''}>
+                                    ${optgroupHTML}
+                                </select>
+                            </div>
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-size: 0.85rem; font-weight: bold; color: ${myReady ? '#059669' : '#d97706'};">
+                                    ${myReady ? '✓ あなたの準備: 完了' : '⏳ あなたの準備: 未完了'} | 相手 (${oppName}) の準備: ${oppReady ? '完了 ✓' : '待機中...'}
+                                </span>
+                                ${!myReady ? `<button onclick="setReady(${m.id}, ${isCreator})" class="btn btn-success" style="width: auto; padding: 0.5rem 1.2rem; font-size: 0.85rem;">準備完了</button>` : `<button onclick="cancelReady(${m.id}, ${isCreator})" class="btn btn-danger" style="width: auto; padding: 0.4rem 1rem; font-size: 0.75rem;">解除する</button>`}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (m.status === '対戦中') {
+                return `
+                    <div class="card" style="background: #ecfdf5; border: 1px solid #a7f3d0;">
+                        <h3 style="font-size: 1.1rem; font-weight: bold; color: #065f46; margin-bottom: 0.5rem;">🚀 対戦中ルーム</h3>
+                        <p style="font-size: 0.85rem; color: #047857; line-height: 1.6; margin-bottom: 1.5rem;">
+                            対戦を開始してください。ルールは<b>プラコロ公式ルール</b>に則ってプレイしてください。<br>
+                            対戦が終了したら勝者が対戦終了を押してください。
+                        </p>
+                        <button onclick="pressEndMatch(${m.id})" class="btn btn-primary" style="width: auto; padding: 0.6rem 1.5rem; font-size: 0.9rem;">対戦終了</button>
+                    </div>
+                `;
+            } else if (m.status === '確認中') {
+                const isWinner = (m.winner === currentUser.username);
+                return `
+                    <div class="card" style="background: #fef3c7; border: 1px solid #fde68a;">
+                        <h3 style="font-size: 1.1rem; font-weight: bold; color: #92400e; margin-bottom: 0.5rem;">📊 リザルト・相互確認</h3>
+                        <p style="font-size: 0.85rem; color: #b45309; margin-bottom: 1rem;">
+                            勝利報告: 👑 <b>${m.winner}</b> の勝利<br>
+                            この対戦結果で相違はありませんか？
+                        </p>
+                        <div style="display: flex; gap: 0.75rem;">
+                            <button onclick="approveResult(${m.id})" class="btn btn-success" style="width: auto; padding: 0.5rem 1.2rem; font-size: 0.85rem;">相違ありません</button>
+                            <button onclick="rejectResult(${m.id})" class="btn btn-danger" style="width: auto; padding: 0.5rem 1.2rem; font-size: 0.85rem;">相違があります</button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function setupMatchmakingEvents() {
+            const form = document.getElementById('create-match-form');
+            if (form) {
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const opponent = document.getElementById('match-opponent').value;
+                    const matchRule = document.getElementById('match-rule').value;
+
+                    if (!opponent) {
+                        alert('対戦相手を選択してください。');
+                        return;
+                    }
+
+                    customMatches.unshift({
+                        id: Date.now(),
+                        creator: currentUser.username,
+                        opponent: opponent,
+                        matchRule: matchRule,
+                        status: '要望あり',
+                        creatorReady: false, opponentReady: false,
+                        creatorChara: '', opponentChara: '',
+                        winner: ''
+                    });
+
+                    saveAll();
+                    alert('対戦要望を送信しました！');
+                    render();
+                });
+            }
+        }
+
+        window.acceptRequest = function(id) {
+            const m = customMatches.find(x => x.id === id);
+            if (m) {
+                m.status = '準備中';
+                saveAll();
+                alert('対戦要望を受け入れました！準備フェーズへ移行します。');
+                render();
+            }
+        };
+
+        window.declineRequest = function(id) {
+            if (confirm('対戦要望を辞退しますか？')) {
+                customMatches = customMatches.filter(x => x.id !== id);
+                saveAll();
+                render();
+            }
+        };
+
+        window.cancelMatch = function(id) {
+            customMatches = customMatches.filter(x => x.id !== id);
+            saveAll();
+            render();
+        };
+
+        // 準備完了ボタン
+        window.setReady = function(matchId, isCreator) {
+            const m = customMatches.find(x => x.id === matchId);
+            if (!m) return;
+
+            const chara = document.getElementById('my-chara-select').value;
+            if (isCreator) {
+                m.creatorReady = true;
+                m.creatorChara = chara;
+            } else {
+                m.opponentReady = true;
+                m.opponentChara = chara;
+            }
+
+            // 両者が準備完了したら「対戦中」ステータスへ
+            if (m.creatorReady && m.opponentReady) {
+                m.status = '対戦中';
+            }
+
+            saveAll();
+            render();
+        };
+
+        window.cancelReady = function(matchId, isCreator) {
+            const m = customMatches.find(x => x.id === matchId);
+            if (!m) return;
+
+            if (isCreator) {
+                m.creatorReady = false;
+                m.creatorChara = '';
+            } else {
+                m.opponentReady = false;
+                m.opponentChara = '';
+            }
+            saveAll();
+            render();
+        };
+
+        // 対戦終了ボタンを押した人が勝者になる
+        window.pressEndMatch = function(matchId) {
+            if (confirm('対戦を終了して、あなたが勝者として結果を報告しますか？')) {
+                const m = customMatches.find(x => x.id === matchId);
+                if (m) {
+                    m.winner = currentUser.username;
+                    m.status = '確認中';
+                    saveAll();
+                    render();
+                }
+            }
+        };
+
+        // 相互確認：「相違ありません」
+        window.approveResult = function(matchId) {
+            const m = customMatches.find(x => x.id === matchId);
+            if (!m) return;
+
+            const loserName = (m.winner === m.creator ? m.opponent : m.creator);
+            const winnerChara = (m.winner === m.creator ? m.creatorChara : m.opponentChara);
+            const loserChara = (m.winner === m.creator ? m.opponentChara : m.creatorChara);
+
+            // 戦績データベースに登録
+            registeredMatches.unshift({
+                id: Date.now(),
+                winner: m.winner,
+                loser: loserName,
+                matchType: 'オンライン',
+                matchRule: m.matchRule,
+                winnerChara,
+                loserChara,
+                date: new Date().toISOString().split('T')[0]
+            });
+
+            m.status = '終了';
+            saveAll();
+            alert('戦績が正常に登録されました！対戦お疲れ様でした！');
+            render();
+        };
+
+        // 相互確認：「相違があります」 -> 対戦画面（準備中）に戻る
+        window.rejectResult = function(matchId) {
+            if (confirm('相違があるため、対戦準備画面に戻します。')) {
+                const m = customMatches.find(x => x.id === matchId);
+                if (m) {
+                    m.status = '準備中';
+                    m.creatorReady = false;
+                    m.opponentReady = false;
+                    m.winner = '';
+                    saveAll();
+                    render();
+                }
+            }
+        };
+
+        // --- 大会ページ ---
+        function renderTournamentsPage(activeTourney) {
+            return `
+                <div class="card">
+                    <h2 style="font-size: 1.2rem; font-weight: bold; color: #1e293b;">🏆 ${activeTourney.name}</h2>
+                    <span class="badge badge-amber" style="margin-top: 0.5rem;">ステータス: ${activeTourney.status}</span>
+                </div>
+            `;
+        }
+
+        // --- 戦績確認ページ ---
+        function renderRecordsPage() {
+            return `
+                <div class="card">
+                    <h2 style="font-size: 1.1rem; font-weight: bold; color: #1e293b; margin-bottom: 1rem;">📊 確定済み戦績一覧</h2>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>勝者</th>
+                                    <th>敗者</th>
+                                    <th>ルール</th>
+                                    <th>勝者キャラ</th>
+                                    <th>敗者キャラ</th>
+                                    <th>日付</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${registeredMatches.length === 0 ? '<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 2rem;">まだ確定した戦績はありません</td></tr>' :
+                                  registeredMatches.map(m => `
+                                    <tr>
+                                        <td>#${m.id}</td>
+                                        <td style="color: #059669; font-weight: bold;">👑 ${m.winner}</td>
+                                        <td style="color: #e11d48; font-weight: bold;">${m.loser}</td>
+                                        <td><span class="badge badge-purple">${m.matchRule}</span></td>
+                                        <td>${charaData[m.winnerChara]?.img || ''} ${m.winnerChara}</td>
+                                        <td>${charaData[m.loserChara]?.img || ''} ${m.loserChara}</td>
+                                        <td style="font-size: 0.75rem; color: #64748b;">${m.date}</td>
+                                    </tr>
+                                  `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- 管理者ページ ---
+        function renderAdminTourneyPage(tourney) {
+            return `
+                <div class="card">
+                    <h2 style="font-size: 1.1rem; font-weight: bold; color: #1e293b;">👑 大会運営管理パネル (${tourney.name})</h2>
+                    <p style="font-size: 0.8rem; color: #64748b; margin-top: 0.5rem;">管理者として大会をコントロールできます。</p>
+                </div>
+            `;
+        }
+        function setupAdminTourneyEvents() {}
+
+        render();
+    </script>
+</body>
+</html>
